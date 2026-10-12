@@ -391,7 +391,7 @@ static SR_RS: Region = Region {
     date_sep: '.',
     time_sep: ':',
     short_date: "dd.mm.yyyy.",
-    long_date: "dddd, d. mmmm yyyy",
+    long_date: "dddd, d. mmmm yyyy.",
     short_time: "hh:mm",
     long_time: "hh:mm:ss",
     datetime: "dd.mm.yyyy. hh:mm",

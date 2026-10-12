@@ -273,9 +273,11 @@ fn is_connector(w: &str, r: &Region) -> bool {
 
 fn parse_date(t: &str, sys: DateSystem, r: &Region) -> Option<(f64, &'static str)> {
     let seps: &[char] = &['/', '-', '.'];
-    // A trailing separator (Serbian's short date reads back its own "15.03.2026.") would
-    // otherwise leave an empty final part and fall through every arm below.
-    let t = t.trim().trim_end_matches(',').trim_end_matches(seps);
+    let t = t.trim().trim_end_matches(',');
+    // A region whose short date ends with its separator ("25.09.2026." in sr-Latn-RS) reads
+    // one back; stripping any run of separators here would also turn "3/4/" or "1-2-" into a
+    // date in every region, including ones with no such convention.
+    let t = if r.short_date.ends_with(r.date_sep) { t.strip_suffix(r.date_sep).unwrap_or(t) } else { t };
     let num = |s: &str| s.trim().parse::<i64>().ok();
     let month_name = |s: &str| r.month_from_name(s);
     let parts: Vec<&str> = t.split(seps).collect();
@@ -570,6 +572,15 @@ mod tests {
         // back must read the same way as without it.
         assert_eq!(d("sr-Latn-RS", "25.09.2026."), Value::Number(46290.0));
         assert_eq!(pin("sr-Latn-RS", "25.09.2026.").format, Some("m/d/yyyy"));
+        // Only one trailing separator is trimmed, and only in a region whose own short date ends
+        // with it: a second one, or any trailing separator in a region with no such convention,
+        // is not a date.
+        assert_eq!(d("sr-Latn-RS", "25.09.2026.."), Value::text("25.09.2026.."));
+        assert_eq!(d("en-US", "3/4/"), Value::text("3/4/"));
+        assert_eq!(d("en-US", "1-2-"), Value::text("1-2-"));
+        assert_eq!(d("en-US", "2026-09-25-"), Value::text("2026-09-25-"));
+        assert_eq!(d("fr-FR", "25.09.2026/"), Value::text("25.09.2026/"));
+        assert_eq!(d("en-US", "12.2026."), Value::text("12.2026."));
         assert_eq!(d("ja-JP", "2026/9/25"), Value::Number(46290.0));
         assert_eq!(d("ko-KR", "2026-09-25"), Value::Number(46290.0));
         assert_eq!(d("zh-TW", "2026/09/25"), Value::Number(46290.0));
