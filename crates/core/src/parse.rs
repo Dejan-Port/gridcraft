@@ -272,10 +272,12 @@ fn is_connector(w: &str, r: &Region) -> bool {
 }
 
 fn parse_date(t: &str, sys: DateSystem, r: &Region) -> Option<(f64, &'static str)> {
-    let t = t.trim().trim_end_matches(',');
+    let seps: &[char] = &['/', '-', '.'];
+    // A trailing separator (Serbian's short date reads back its own "15.03.2026.") would
+    // otherwise leave an empty final part and fall through every arm below.
+    let t = t.trim().trim_end_matches(',').trim_end_matches(seps);
     let num = |s: &str| s.trim().parse::<i64>().ok();
     let month_name = |s: &str| r.month_from_name(s);
-    let seps: &[char] = &['/', '-', '.'];
     let parts: Vec<&str> = t.split(seps).collect();
     if parts.len() == 3 {
         let (a, b, c) = (parts.first()?.trim(), parts.get(1)?.trim(), parts.get(2)?.trim());
@@ -550,6 +552,8 @@ mod tests {
         assert_eq!(pin("en-GB", "£1,200.50").value, Value::Number(1200.5));
         assert_eq!(pin("cs-CZ", "99\u{a0}Kč").value, Value::Number(99.0));
         assert_eq!(pin("ja-JP", "¥1,000").value, Value::Number(1000.0));
+        let c = pin("sr-Latn-RS", "1.234,50 RSD");
+        assert_eq!((c.value, c.format), (Value::Number(1234.5), Some("#,##0.00 \"RSD\"")));
     }
 
     #[test]
@@ -561,6 +565,11 @@ mod tests {
         assert_eq!(d("pt-BR", "25/09/2026"), Value::Number(46290.0));
         assert_eq!(d("ru-RU", "25.09.2026"), Value::Number(46290.0));
         assert_eq!(d("cs-CZ", "25. 9. 2026"), Value::Number(46290.0));
+        assert_eq!(d("sr-Latn-RS", "25.09.2026"), Value::Number(46290.0));
+        // Serbian's own short date ends with a period ("25.09.2026.", glibc %d.%m.%Y.); typing it
+        // back must read the same way as without it.
+        assert_eq!(d("sr-Latn-RS", "25.09.2026."), Value::Number(46290.0));
+        assert_eq!(pin("sr-Latn-RS", "25.09.2026.").format, Some("m/d/yyyy"));
         assert_eq!(d("ja-JP", "2026/9/25"), Value::Number(46290.0));
         assert_eq!(d("ko-KR", "2026-09-25"), Value::Number(46290.0));
         assert_eq!(d("zh-TW", "2026/09/25"), Value::Number(46290.0));
@@ -597,6 +606,8 @@ mod tests {
         assert_eq!(d("ru-RU", "25 сентября 2026"), Value::Number(46290.0));
         assert_eq!(d("ru-RU", "25 сентября 2026 г."), Value::Number(46290.0));
         assert_eq!(d("cs-CZ", "25. září 2026"), Value::Number(46290.0));
+        assert_eq!(d("sr-Latn-RS", "25. septembar 2026"), Value::Number(46290.0));
+        assert_eq!(d("sr-Latn-RS", "25. sep 2026"), Value::Number(46290.0));
         assert_eq!(d("en-GB", "25 Sept 2026"), Value::Number(46290.0));
         assert_eq!(d("en-GB", "Sep 25, 2026"), Value::Number(46290.0));
         assert_eq!(d("de-DE", "25. Sepxx 2026"), Value::text("25. Sepxx 2026"));
