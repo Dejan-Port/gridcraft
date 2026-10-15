@@ -400,3 +400,63 @@ fn without_a_unicode_font_greek_still_degrades_to_question_marks() {
     assert!(find(&pdf, b"(??) Tj").is_some());
     assert!(find(&pdf, b"FontFile2").is_none());
 }
+
+/// The distinct characters of `texts` in first-seen order: the character list for [`tiny_ttf`].
+fn distinct_chars(texts: &[&str]) -> Vec<char> {
+    let mut chars = Vec::new();
+    for c in texts.iter().flat_map(|t| t.chars()) {
+        if !chars.contains(&c) {
+            chars.push(c);
+        }
+    }
+    chars
+}
+
+/// The `Tj` operand for `text` in a [`tiny_ttf`] font built from `chars` (glyph `i + 1` per char).
+fn glyph_operand(chars: &[char], text: &str) -> String {
+    let ids: String = text.chars().map(|c| format!("{:04X}", chars.iter().position(|x| *x == c).unwrap() + 1)).collect();
+    format!("<{ids}> Tj")
+}
+
+#[test]
+fn cyrillic_text_embeds_a_unicode_font_instead_of_question_marks() {
+    // Real Serbian (with the letters only Serbian Cyrillic has: Ђ ђ Љ љ Њ њ Џ џ Ћ ћ ј) and
+    // Russian (a pangram, with ё), next to a Latin-only cell.
+    let serbian = "Добар дан, Ђорђе! Љубав, њива, џеп, ћуп и ја.";
+    let russian = "Съешь же ещё этих мягких французских булок";
+    let chars = distinct_chars(&[serbian, russian]);
+    let regular = Arc::new(UnicodeFont::parse(tiny_ttf(&chars, 600, 0)).unwrap());
+    let bold = Arc::new(UnicodeFont::parse(tiny_ttf(&chars, 650, 0)).unwrap());
+    let mut doc = PdfDoc::default();
+    doc.set_unicode_fonts([Some(regular), Some(bold)]);
+    let pg = doc.add_page(612.0, 792.0);
+    pg.text(72.0, 72.0, 12.0, Font::Helvetica, [0, 0, 0], serbian);
+    pg.text(72.0, 90.0, 12.0, Font::HelveticaBold, [0, 0, 0], russian);
+    pg.text(72.0, 108.0, 12.0, Font::Helvetica, [0, 0, 0], "Total 2026");
+    let pdf = doc.finish();
+    check_xref(&pdf);
+    assert!(find(&pdf, b"/U1 12 Tf").is_some(), "regular Cyrillic uses the embedded regular face");
+    assert!(find(&pdf, b"/U2 12 Tf").is_some(), "bold Cyrillic uses the embedded bold face");
+    assert!(find(&pdf, glyph_operand(&chars, serbian).as_bytes()).is_some(), "Serbian goes out as glyph ids");
+    assert!(find(&pdf, glyph_operand(&chars, russian).as_bytes()).is_some(), "Russian goes out as glyph ids");
+    assert!(find(&pdf, b"(\x3f\x3f").is_none(), "no question marks");
+    assert!(find(&pdf, b"/F1 12 Tf\n").is_some() && find(&pdf, b"(Total 2026) Tj").is_some(), "Latin keeps the standard font");
+    assert_eq!(pdf.windows(10).filter(|w| w == b"/FontFile2").count(), 2, "regular and bold are both embedded");
+    assert!(find(&pdf, b"[600]").is_some() && find(&pdf, b"[650]").is_some(), "each face carries its own widths");
+    // ToUnicode keeps the text searchable and copyable: Ђ U+0402, ј U+0458, џ U+045F, я U+044F,
+    // ё U+0451 map back from their glyphs.
+    for c in ['Ђ', 'ј', 'џ', 'я', 'ё'] {
+        let entry = format!("<{:04X}> <{:04X}>", chars.iter().position(|x| *x == c).unwrap() + 1, c as u32);
+        assert!(find(&pdf, entry.as_bytes()).is_some(), "ToUnicode entry for {c}: {entry}");
+    }
+}
+
+#[test]
+fn without_a_unicode_font_cyrillic_still_degrades_to_question_marks() {
+    let mut doc = PdfDoc::default();
+    doc.add_page(612.0, 792.0).text(72.0, 72.0, 12.0, Font::Helvetica, [0, 0, 0], "Здраво");
+    let pdf = doc.finish();
+    check_xref(&pdf);
+    assert!(find(&pdf, b"(??????) Tj").is_some());
+    assert!(find(&pdf, b"FontFile2").is_none());
+}
