@@ -67,4 +67,5 @@ display_name = "Netter"
 sync_github_name = false
 
 [people.Dejan-Port]
+real_name = "Dejan Kocić"
 sync_github_name = true
