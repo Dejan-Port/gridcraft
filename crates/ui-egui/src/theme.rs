@@ -247,6 +247,19 @@ fn home_fonts(file: &str) -> String {
     format!("{home}/Library/Fonts/{file}")
 }
 
+/// Regular and bold system fonts for printed and exported text the standard PDF fonts can't
+/// show (Greek, Cyrillic, …): the first sheet-font candidate that parses as an embeddable
+/// TrueType file. Pass to `gridcraft_engine::pdf::set_unicode_font_loader`.
+pub fn pdf_unicode_fonts() -> [Option<Vec<u8>>; 2] {
+    ["cell", "cell-bold"].map(|role| {
+        candidates(role)
+            .into_iter()
+            .filter(|(path, index)| *index == 0 && path.to_ascii_lowercase().ends_with(".ttf"))
+            .filter_map(|(path, _)| std::fs::read(path).ok())
+            .find(|bytes| gridcraft_engine::pdf::UnicodeFont::parse(bytes.clone()).is_some_and(|f| f.has('Ω') && f.has('ω')))
+    })
+}
+
 /// Candidate font files per role, in preference order.
 fn candidates(role: &str) -> Vec<(String, u32)> {
     let mac_sys = "/System/Library/Fonts";
